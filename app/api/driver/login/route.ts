@@ -3,7 +3,7 @@ import { json, MOCK_DRIVER } from "../../mock-data";
 export const runtime = "edge";
 
 // Hard-coded for testing
-const FIXED_OTP_TX_ID = "session_0001";
+const FIXED_OTP_TX_ID = "otp_tx_test_0001";
 const OTP_EXPIRES_IN = 300; // 5 phút
 const RESEND_AFTER = 30; // 30s
 
