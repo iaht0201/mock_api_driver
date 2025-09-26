@@ -1,0 +1,292 @@
+openapi: 3.1.0
+info:
+  title: Driver Auth Mock API
+  version: 1.0.0
+  description: |
+    Bộ API mock cho app tài xế (login, verify OTP, resend OTP, refresh token).
+    Tất cả endpoints trả **JSON mẫu** để test frontend, không có DB thật.
+
+servers:
+  - url: https://{domain}
+    variables:
+      domain:
+        default: example.vercel.app
+        description: Domain Vercel sau khi deploy.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [success, error_code, message]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error_code:
+          type: string
+          description: Mã lỗi chuẩn.
+          enum:
+            - BAD_REQUEST
+            - INVALID_ACCOUNT
+            - INVALID_CREDENTIALS
+            - ACCOUNT_LOCKED
+            - ACCOUNT_INACTIVE
+            - SESSION_NOT_FOUND
+            - OTP_EXPIRED
+            - OTP_INVALID
+            - OTP_LOCKED
+            - VEHICLE_NOT_ALLOWED
+            - VEHICLE_INACTIVE
+            - RATE_LIMITED
+            - TOKEN_EXPIRED
+            - TOKEN_REVOKED
+            - INTERNAL_ERROR
+        message:
+          type: string
+          example: Lỗi chi tiết.
+
+    Driver:
+      type: object
+      required: [id, name, phone_number, status]
+      properties:
+        id: { type: integer, example: 1024 }
+        name: { type: string, example: "Nguyễn Văn A" }
+        phone_number: { type: string, example: "+84905123456" }
+        license_plate: { type: string, example: "92A-12345" }
+        status: { type: string, enum: [active, inactive], example: active }
+
+    Vehicle:
+      type: object
+      properties:
+        id: { type: integer, example: 501 }
+        license_plate: { type: string, example: "92A-12345" }
+        type: { type: string, example: truck_5t }
+        status: { type: string, enum: [active, inactive], example: active }
+
+    LoginRequest:
+      type: object
+      required: [license_plate, phone_number, password]
+      properties:
+        license_plate: { type: string, example: "92A-12345" }
+        phone_number: { type: string, example: "0905123456" }
+        password: { type: string, format: password, example: "123@123" }
+
+    LoginSuccess:
+      type: object
+      required: [success, message, data]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: "Đăng nhập thành công" }
+        data:
+          type: object
+          required: [driver, access_token, token_type, expires_in, refresh_token, refresh_expires_in]
+          properties:
+            driver:
+              $ref: '#/components/schemas/Driver'
+            access_token: { type: string, example: "<jwt_access_token>" }
+            token_type: { type: string, example: Bearer }
+            expires_in: { type: integer, example: 3600 }
+            refresh_token: { type: string, example: "<jwt_refresh_token>" }
+            refresh_expires_in: { type: integer, example: 2592000 }
+
+    OtpVerifyRequest:
+      type: object
+      required: [session_id, otp_code]
+      properties:
+        session_id: { type: string, example: "sess-ok" }
+        otp_code: { type: string, example: "123456" }
+
+    OtpVerifySuccess:
+      type: object
+      required: [success, message, token_type, access_token, expires_in, refresh_token, driver, vehicle, permissions]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: "Xác thực OTP thành công" }
+        token_type: { type: string, example: Bearer }
+        access_token: { type: string, example: "eyJhbGciOi..." }
+        expires_in: { type: integer, example: 3600 }
+        refresh_token: { type: string, example: "rt-2f7c6a..." }
+        driver:
+          $ref: '#/components/schemas/Driver'
+        vehicle:
+          $ref: '#/components/schemas/Vehicle'
+        permissions:
+          type: array
+          items:
+            type: string
+            enum: [trip.view, trip.accept, trip.update_location]
+
+    ResendOtpRequest:
+      type: object
+      required: [session_id]
+      properties:
+        session_id: { type: string, example: "sess-ok" }
+
+    ResendOtpSuccess:
+      type: object
+      required: [success, message, expired_in]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: "OTP đã được gửi lại" }
+        expired_in: { type: integer, example: 300 }
+
+    TokenRefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string, example: "rt-2f7c6a..." }
+
+    TokenRefreshSuccess:
+      type: object
+      required: [token_type, access_token, expires_in]
+      properties:
+        token_type: { type: string, example: Bearer }
+        access_token: { type: string, example: "eyJhbGciOi..." }
+        expires_in: { type: integer, example: 3600 }
+
+paths:
+  /api/driver/login:
+    post:
+      summary: Driver login with password
+      description: |
+        Chuẩn hoá `license_plate`, `phone_number`, kiểm tra tài khoản, xác thực mật khẩu.
+        **Mock triggers** để test nhanh:
+        - Header `x-test-rate: 1` ⇒ 429 RATE_LIMITED
+        - `phone_number = "+84000000000"` ⇒ 401 INVALID_ACCOUNT
+        - `password = "wrong"` ⇒ 401 INVALID_CREDENTIALS
+        - `password = "lock"` ⇒ 423 ACCOUNT_LOCKED
+        - `password = "inactive"` ⇒ 403 ACCOUNT_INACTIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              license_plate: "92A-12345"
+              phone_number: "0905123456"
+              password: "123@123"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginSuccess'
+        '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Forbidden, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '423': { description: Locked, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '429': { description: Too Many Requests, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '500': { description: Server Error, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+
+  /api/driver/verify-otp:
+    post:
+      summary: Verify OTP for login session
+      description: |
+        Xác thực OTP 6 số theo `session_id`. Nếu sai nhiều lần sẽ khoá tạm.
+        **Mock triggers**:
+        - Header `x-test-rate: 1` ⇒ 429 RATE_LIMITED
+        - `session_id = 'sess-not-found'` ⇒ 404 SESSION_NOT_FOUND
+        - `session_id = 'sess-expired'` ⇒ 410 OTP_EXPIRED
+        - `session_id = 'sess-locked'` ⇒ 423 OTP_LOCKED
+        - `session_id = 'sess-inactive'` ⇒ 403 ACCOUNT_INACTIVE
+        - `session_id = 'sess-veh-not-allowed'` ⇒ 403 VEHICLE_NOT_ALLOWED
+        - `session_id = 'sess-veh-inactive'` ⇒ 403 VEHICLE_INACTIVE
+        - `otp_code !== '123456'` ⇒ 401 OTP_INVALID
+        - Header `x-otp-attempts: 0|1|2` để mô phỏng số lần sai trước đó.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpVerifyRequest'
+            example:
+              session_id: "sess-ok"
+              otp_code: "123456"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpVerifySuccess'
+        '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Forbidden, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: Not Found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '410': { description: Gone, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '423': { description: Locked, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '429': { description: Too Many Requests, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '500': { description: Server Error, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+
+  /api/driver/resend-otp:
+    post:
+      summary: Resend OTP for an unverified session
+      description: |
+        Chỉ cho resend khi phiên hợp lệ, chưa verify, chưa lock. Rate limit: 1 lần/60s, tối đa 3 lần/phiên.
+        **Mock triggers**:
+        - Header `x-test-rate: 1` ⇒ 429 RATE_LIMITED
+        - `session_id = 'sess-not-found'` ⇒ 404 SESSION_NOT_FOUND
+        - `session_id = 'sess-expired'` ⇒ 410 OTP_EXPIRED
+        - `session_id = 'sess-locked'` ⇒ 423 OTP_LOCKED
+        - `session_id = 'sess-verified'` ⇒ 409 ALREADY_VERIFIED
+        - Header `x-resend-count: 3` ⇒ 429 RATE_LIMITED (quá 3 lần/phiên)
+        - Header `x-last-resend-secs: <60` ⇒ 429 RATE_LIMITED (cooldown)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendOtpRequest'
+            example:
+              session_id: "sess-ok"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResendOtpSuccess'
+        '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: Not Found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '409': { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '410': { description: Gone, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '423': { description: Locked, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '429': { description: Too Many Requests, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '500': { description: Server Error, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+
+  /api/driver/token/refresh:
+    post:
+      summary: Refresh access token
+      description: |
+        Dùng refresh_token hợp lệ để lấy access_token mới.
+        **Mock triggers**:
+        - Header `x-test-rate: 1` ⇒ 429 RATE_LIMITED
+        - `refresh_token = 'expired'` ⇒ 401 TOKEN_EXPIRED
+        - `refresh_token = 'revoked'` ⇒ 401 TOKEN_REVOKED
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+            example:
+              refresh_token: "rt-2f7c6a..."
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefreshSuccess'
+        '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '429': { description: Too Many Requests, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '500': { description: Server Error, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
