@@ -1,11 +1,11 @@
-import {
-  json,
-  MOCK_DRIVER,
-  MOCK_ACCESS_TOKEN,
-  MOCK_REFRESH_TOKEN,
-} from "../../mock-data";
+import { json, MOCK_DRIVER } from "../../mock-data";
 
 export const runtime = "edge";
+
+// Hard-coded for testing
+const FIXED_OTP_TX_ID = "session_0001";
+const OTP_EXPIRES_IN = 300; // 5 phút
+const RESEND_AFTER = 30; // 30s
 
 export async function POST(req: Request): Promise<Response> {
   const body = (await req.json().catch(() => null)) as {
@@ -40,17 +40,26 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  const expiresAt = new Date(Date.now() + OTP_EXPIRES_IN * 1000).toISOString();
+  const maskedPhone = body.phone_number.replace(/\d(?=\d{4})/g, "*"); // ****5678
+
   return json(
     {
       success: true,
-      message: "Đăng nhập thành công",
+      message: "Khởi tạo OTP thành công",
       data: {
-        driver: MOCK_DRIVER,
-        access_token: MOCK_ACCESS_TOKEN,
-        token_type: "Bearer",
-        expires_in: 3600,
-        refresh_token: MOCK_REFRESH_TOKEN,
-        refresh_expires_in: 2592000,
+        otp_tx_id: FIXED_OTP_TX_ID,
+        session_id: FIXED_OTP_TX_ID,
+        expires_in: OTP_EXPIRES_IN,
+        expires_at: expiresAt,
+        resend_after: RESEND_AFTER,
+        masked_phone: maskedPhone,
+        driver_preview: {
+          id: MOCK_DRIVER.id,
+          name: MOCK_DRIVER.name,
+          license_plate: MOCK_DRIVER.license_plate,
+          status: MOCK_DRIVER.status,
+        },
       },
     },
     { status: 200 }
