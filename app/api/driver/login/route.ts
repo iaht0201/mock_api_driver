@@ -28,7 +28,7 @@ const MOCK_DRIVER = {
   status: "active" as "active" | "inactive" | "disabled",
   // Pre-hash password "123@123" using SHA-256 (demo only; use Argon2id/Bcrypt in production)
   password_hash_hex:
-    "f8cfc7f61f8fded7536f22e82dc121ebbb31576b6a54783f0cc76bb6706f6caa", // sha256("123@123")
+    "635772e64f62bc07612beaced11c3166207095e1cabfc2e9e8089fad0f5a1d38", // sha256("123@123")
 };
 
 // ===== Helpers =====
