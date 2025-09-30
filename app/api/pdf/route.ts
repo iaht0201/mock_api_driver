@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
 
     // >>> CSS bạn cần: ẩn banner publish + bỏ padding .c12 (+ reset nhẹ)
     const injectedCss = `
-    <style>
+   <style>
   /* Ẩn banner, header, footer, vùng publish thừa */
   #publish-banner, .publish-banner, .docos-punch-viewer-banner,
   .docs-ml-header, header[role="banner"], .header, .footer {
@@ -89,10 +89,12 @@ export async function GET(req: NextRequest) {
 
   /* Responsive cho mọi ảnh/video: chiều ngang tối đa */
   img, video {
+    width: 100% !important;
     max-width: 100vw !important;
     height: auto !important;
     display: block !important;
     margin: 8px auto !important;
+    object-fit: contain !important;
   }
 
   /* Responsive tiêu đề: thu nhỏ cho mobile */
@@ -153,6 +155,7 @@ export async function GET(req: NextRequest) {
     }
   }
 </style>
+
     `;
 
     // chèn vào <head>
