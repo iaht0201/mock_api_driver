@@ -1,93 +1,96 @@
-// app/api/pdf-open/route.ts
+// app/api/embed-proxy/route.ts
 import type { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function addEmbeddedParam(u: string) {
-  // thêm embedded=true nếu chưa có
-  if (/[\?&]embedded=true/i.test(u)) return u;
-  return u.includes("?") ? `${u}&embedded=true` : `${u}?embedded=true`;
+  if (!u) return "";
+  return /[?&]embedded=true/i.test(u)
+    ? u
+    : (u.includes("?") ? `${u}&embedded=true` : `${u}?embedded=true`);
 }
 
-/** Trả về URL NHÚNG (KHÔNG convert PDF) cho nhiều loại nguồn phổ biến */
-function normalizeToEmbed(raw = ""): string {
+function normalizeDocsPublish(raw = "") {
   if (!raw) return "";
-
-  // ---- Google Docs (2 dạng: /d/<ID> và /d/e/<PUB_ID>/pub) ----
-  // Dạng publish sẵn: /document/d/e/<PUB_ID>/pub...
-  let m = raw.match(
-    /docs\.google\.com\/document\/d\/e\/([^/]+)\/pub(?:[^\s]*)?/i
-  );
-  if (m) {
-    return addEmbeddedParam(`https://docs.google.com/document/d/e/${m[1]}/pub`);
-  }
-  // Dạng chưa publish: /document/d/<ID>/...
+  // /document/d/e/<PUB_ID>/pub
+  let m = raw.match(/docs\.google\.com\/document\/d\/e\/([^/]+)\/pub/i);
+  if (m) return addEmbeddedParam(`https://docs.google.com/document/d/e/${m[1]}/pub`);
+  // /document/d/<ID>  (yêu cầu đã Publish; nếu chưa → 404)
   m = raw.match(/docs\.google\.com\/document\/d\/([^/]+)/i);
-  if (m) {
-    // tốt nhất là đã Publish → /pub?embedded=true
-    return addEmbeddedParam(`https://docs.google.com/document/d/${m[1]}/pub`);
-    // nếu file chưa publish, link này sẽ 404 → hãy Publish to the web trước
-  }
+  if (m) return addEmbeddedParam(`https://docs.google.com/document/d/${m[1]}/pub`);
+  return addEmbeddedParam(raw);
+}
 
-  // ---- Google Slides ----
-  m = raw.match(/docs\.google\.com\/presentation\/d\/([^/]+)/i);
-  if (m) {
-    // embed viewer chính thức của Slides
-    return `https://docs.google.com/presentation/d/${m[1]}/embed?start=false&loop=false&delayms=3000`;
-  }
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
 
-  // ---- Google Sheets ----
-  m = raw.match(/docs\.google\.com\/spreadsheets\/d\/([^/]+)/i);
-  if (m) {
-    // htmlview thường chạy được; nếu đã Publish thì có thể dùng /pubhtml (ổn định hơn)
-    // return `https://docs.google.com/spreadsheets/d/${m[1]}/pubhtml?widget=true&headers=false`;
-    return `https://docs.google.com/spreadsheets/d/${m[1]}/htmlview`;
-  }
-
-  // ---- Google Drive preview (ảnh/video/audio/tài liệu) ----
-  m = raw.match(/drive\.google\.com\/file\/d\/([^/]+)/i);
-  if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
-  const q = raw.match(/[?&]id=([^&]+)/i);
-  if (q) return `https://drive.google.com/file/d/${q[1]}/preview`;
-
-  // ---- Office Online viewer cho docx/xlsx/pptx ----
-  if (/\.(docx|xlsx|pptx)(\?|$)/i.test(raw)) {
-    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
-      raw
-    )}`;
-  }
-
-  // ---- PDF: dùng Google Viewer để tăng tương thích mobile (KHÔNG convert) ----
-  if (/\.pdf(\?|$)/i.test(raw)) {
-    return `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(
-      raw
-    )}`;
-  }
-
-  // fallback: trả nguyên (có thể bị chặn iframe tùy server nguồn)
-  return raw;
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS });
 }
 
 export async function GET(req: NextRequest) {
   const raw = req.nextUrl.searchParams.get("url") || "";
-  const mode = (req.nextUrl.searchParams.get("mode") || "").toLowerCase(); // "embed" | "viewer" | "raw"
-  if (!raw) return new Response("Missing url", { status: 400 });
+  if (!raw) return new Response("Missing url", { status: 400, headers: CORS });
 
-  const embedUrl = normalizeToEmbed(raw);
+  const embedUrl = normalizeDocsPublish(raw);
 
-  // Fallback universal viewer của Google (đặc biệt hữu ích cho PDF/định dạng lạ)
-  const viewerUrl = `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(
-    raw
-  )}`;
+  try {
+    const upstream = await fetch(embedUrl, {
+      headers: { "User-Agent": req.headers.get("user-agent") || "Mozilla/5.0" },
+      redirect: "follow",
+    });
+    if (!upstream.ok) {
+      return new Response(`Upstream ${upstream.status}`, { status: 502, headers: CORS });
+    }
 
-  // Nếu người dùng ép mode thì theo mode
-  if (mode === "embed") return Response.redirect(embedUrl, 302);
-  if (mode === "viewer") return Response.redirect(viewerUrl, 302);
-  if (mode === "raw") return Response.redirect(raw, 302);
+    let html = await upstream.text();
 
-  // Mặc định: nếu đã nhận dạng & tạo được URL embed → dùng embed (HTML gốc)
-  // Nếu không nhận dạng được (embedUrl === raw), dùng viewerUrl làm phương án an toàn hơn trên mobile
-  const target = embedUrl && embedUrl !== raw ? embedUrl : viewerUrl;
+    // <base> để các đường dẫn tương đối (nếu có) vẫn đúng
+    const baseTag = `<base href="https://docs.google.com/">`;
 
-  return Response.redirect(target, 302);
+    // >>> CSS bạn cần: ẩn banner publish + bỏ padding .c12 (+ reset nhẹ)
+    const injectedCss = `
+      <style>
+        /* Ẩn các vùng banner publish/credit hay gặp */
+        #publish-banner, .publish-banner, .docos-punch-viewer-banner,
+        .docs-ml-header, header[role="banner"], .header, .footer {
+          display: none !important;
+        }
+
+        /* Reset viền/mép chung */
+        html, body { margin:0 !important; padding:0 !important; }
+        * { box-sizing: border-box; }
+
+        /* Bỏ padding/margin của .c12 (class auto-gen của Docs) */
+        .c12 { padding: 0 !important; margin: 0 !important; }
+
+        /* Thường vùng nội dung có class này khi publish -> xoá khoảng trống nếu có */
+        .doc-content { padding: 0 !important; margin: 0 !important; }
+
+        /* Ảnh/video full chiều ngang */
+        img, video { max-width: 100% !important; height: auto !important; }
+      </style>
+    `;
+
+    // chèn vào <head>
+    if (/<head[^>]*>/i.test(html)) {
+      html = html.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}\n${injectedCss}\n`);
+    } else {
+      html = html.replace(/<html[^>]*>/i, (m) => `${m}<head>${baseTag}${injectedCss}</head>`);
+    }
+
+    return new Response(html, {
+      status: 200,
+      headers: {
+        ...CORS,
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch {
+    return new Response("Proxy error", { status: 500, headers: CORS });
+  }
 }
