@@ -60,26 +60,99 @@ export async function GET(req: NextRequest) {
 
     // >>> CSS bạn cần: ẩn banner publish + bỏ padding .c12 (+ reset nhẹ)
     const injectedCss = `
-      <style>
-        /* Ẩn các vùng banner publish/credit hay gặp */
-        #publish-banner, .publish-banner, .docos-punch-viewer-banner,
-        .docs-ml-header, header[role="banner"], .header, .footer {
-          display: none !important;
-        }
+    <style>
+  /* Ẩn banner, header, footer, vùng publish thừa */
+  #publish-banner, .publish-banner, .docos-punch-viewer-banner,
+  .docs-ml-header, header[role="banner"], .header, .footer {
+    display: none !important;
+  }
 
-        /* Reset viền/mép chung */
-        html, body { margin:0 !important; padding:0 !important; }
-        * { box-sizing: border-box; }
+  /* Reset chung viền/mép, box-sizing */
+  html, body { margin: 0 !important; padding: 0 !important; }
+  * { box-sizing: border-box; }
 
-        /* Bỏ padding/margin của .c12 (class auto-gen của Docs) */
-        .c12 {  max-width: 100% !important;}
+  /* Responsive cho khối nội dung Docs (thường là .c12 hoặc doc-content) */
+  .c12, .doc-content {
+    max-width: 100vw !important;
+    padding: 12px !important;
+    margin: 0 !important;
+    background-color: #fff !important;
+    overflow-x: auto !important;
+  }
 
-        /* Thường vùng nội dung có class này khi publish -> xoá khoảng trống nếu có */
-        .doc-content { padding: 0 !important; margin: 0 !important; }
+  /* Chữ cơ bản: cân chỉnh cho mobile */
+  body, .c0, .c1, .c3, .c5, .c7, .c8, .c9, .c10, .c11 {
+    font-size: 1rem !important;
+    line-height: 1.5 !important;
+    word-break: break-word !important;
+  }
 
-        /* Ảnh/video full chiều ngang */
-        img, video { max-width: 100% !important; height: auto !important; }
-      </style>
+  /* Responsive cho mọi ảnh/video: chiều ngang tối đa */
+  img, video {
+    max-width: 100vw !important;
+    height: auto !important;
+    display: block !important;
+    margin: 8px auto !important;
+  }
+
+  /* Responsive tiêu đề: thu nhỏ cho mobile */
+  h1, h2, h3, h4, h5, h6, .title, .subtitle {
+    font-size: 1.3rem !important;
+    padding-top: 8px !important;
+    padding-bottom: 4px !important;
+    line-height: 1.3 !important;
+    word-break: break-word !important;
+  }
+
+  /* Danh sách và bullet - co sát mép, căn đều trái */
+  ul, ol {
+    margin: 8px 0 8px 18px !important;
+    padding: 0 !important;
+  }
+  li {
+    font-size: 1rem !important;
+    line-height: 1.5 !important;
+  }
+
+  /* Bảng - tràn ngang khi nhỏ */
+  table {
+    width: 100% !important;
+    overflow-x: auto !important;
+    border-collapse: collapse !important;
+  }
+  th, td {
+    padding: 6px !important;
+    font-size: 0.95rem !important;
+    word-break: break-word !important;
+  }
+
+  /* Chặn tràn: luôn cho phép cuộn ngang khi cần */
+  .doc-content, .c12 {
+    overflow-x: auto !important;
+  }
+
+  /* Media queries cho mobile siêu nhỏ (640px trở xuống) */
+  @media (max-width: 640px) {
+    html, body {
+      font-size: 0.95rem !important;
+    }
+    .c12, .doc-content {
+      padding: 8px !important;
+    }
+    h1, h2, h3, h4, h5, h6, .title, .subtitle {
+      font-size: 1.1rem !important;
+      padding-top: 6px !important;
+      padding-bottom: 2px !important;
+    }
+    th, td {
+      padding: 4px !important;
+      font-size: 0.85rem !important;
+    }
+    img, video {
+      margin: 4px auto !important;
+    }
+  }
+</style>
     `;
 
     // chèn vào <head>
