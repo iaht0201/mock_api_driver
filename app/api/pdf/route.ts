@@ -1,76 +1,66 @@
-// app/api/pdf/route.ts
+// app/api/pdf-url/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import type { NextRequest } from "next/server";
 
-const CORS_HEADERS = {
+function normalizeToPdf(url = ""): string {
+  if (!url) return "";
+  if (/\.pdf(\?|$)/i.test(url)) return url;
+
+  const doc = url.match(/docs\.google\.com\/document\/d\/([^/]+)/);
+  if (doc)
+    return `https://docs.google.com/document/d/${doc[1]}/export?format=pdf`;
+
+  const slides = url.match(/docs\.google\.com\/presentation\/d\/([^/]+)/);
+  if (slides)
+    return `https://docs.google.com/presentation/d/${slides[1]}/export/pdf`;
+
+  const sheets = url.match(/docs\.google\.com\/spreadsheets\/d\/([^/]+)/);
+  if (sheets)
+    return `https://docs.google.com/spreadsheets/d/${sheets[1]}/export?format=pdf`;
+
+  const byPath = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  const byQuery = url.match(/[?&]id=([^&]+)/);
+  const id = byPath?.[1] || byQuery?.[1];
+  if (id) return `https://drive.google.com/uc?export=download&id=${id}`;
+
+  return url;
+}
+
+const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-  "Access-Control-Allow-Headers": "Range, Content-Type, Accept",
-  "Access-Control-Expose-Headers":
-    "Content-Length, Content-Range, Accept-Ranges, Content-Type",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Content-Type": "application/json; charset=utf-8",
 };
 
 export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: CORS_HEADERS });
+  return new Response(null, { status: 204, headers: CORS });
 }
 
-export async function HEAD(req: NextRequest) {
-  return GET(req, /*headOnly*/ true);
-}
-
-export async function GET(req: NextRequest, headOnly = false) {
-  const url = req.nextUrl.searchParams.get("url");
-  if (!url)
-    return new Response("Missing url", { status: 400, headers: CORS_HEADERS });
-
-  try {
-    const range = req.headers.get("range") || undefined;
-
-    const upstream = await fetch(url, {
-      headers: range ? { Range: range } : {},
-      redirect: "follow",
+export async function GET(req: NextRequest) {
+  const raw = req.nextUrl.searchParams.get("url") || "";
+  if (!raw) {
+    return new Response(JSON.stringify({ error: "Missing url" }), {
+      status: 400,
+      headers: CORS,
     });
-
-    // Stream body unless this is HEAD
-    const body = headOnly ? null : upstream.body;
-
-    const headers = new Headers(CORS_HEADERS);
-
-    // Luôn hiển thị inline để tránh tải về/mở app ngoài
-    headers.set("Content-Disposition", 'inline; filename="file.pdf"');
-
-    // Loại nội dung
-    headers.set(
-      "Content-Type",
-      upstream.headers.get("content-type") || "application/pdf"
-    );
-
-    // Truyền các header quan trọng cho PDF.js
-    const cl = upstream.headers.get("content-length");
-    if (cl) headers.set("Content-Length", cl);
-
-    const cr = upstream.headers.get("content-range");
-    if (cr) headers.set("Content-Range", cr);
-
-    // Nếu upstream không báo, vẫn nên cho biết server **có** hỗ trợ range.
-    // (Nếu upstream thực sự KHÔNG hỗ trợ, client vẫn có thể hoạt động với disableRange/data)
-    headers.set(
-      "Accept-Ranges",
-      upstream.headers.get("accept-ranges") || "bytes"
-    );
-
-    // Giữ động, tránh cache sai với range
-    headers.set("Cache-Control", "no-store");
-    headers.set("Vary", "Origin, Range");
-
-    return new Response(body, {
-      status: upstream.status, // 200 hoặc 206 nếu là partial
-      statusText: upstream.statusText,
-      headers,
-    });
-  } catch (e) {
-    return new Response("Proxy error", { status: 500, headers: CORS_HEADERS });
   }
+
+  const exportUrl = normalizeToPdf(raw);
+  const proxiedUrl = exportUrl
+    ? `${req.nextUrl.origin}/api/pdf?url=${encodeURIComponent(exportUrl)}`
+    : "";
+
+  const viewerUrl = proxiedUrl
+    ? `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(
+        proxiedUrl
+      )}`
+    : "";
+
+  return new Response(JSON.stringify({ exportUrl, proxiedUrl, viewerUrl }), {
+    status: 200,
+    headers: CORS,
+  });
 }
