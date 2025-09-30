@@ -7,17 +7,21 @@ function addEmbeddedParam(u: string) {
   if (!u) return "";
   return /[?&]embedded=true/i.test(u)
     ? u
-    : (u.includes("?") ? `${u}&embedded=true` : `${u}?embedded=true`);
+    : u.includes("?")
+    ? `${u}&embedded=true`
+    : `${u}?embedded=true`;
 }
 
 function normalizeDocsPublish(raw = "") {
   if (!raw) return "";
   // /document/d/e/<PUB_ID>/pub
   let m = raw.match(/docs\.google\.com\/document\/d\/e\/([^/]+)\/pub/i);
-  if (m) return addEmbeddedParam(`https://docs.google.com/document/d/e/${m[1]}/pub`);
+  if (m)
+    return addEmbeddedParam(`https://docs.google.com/document/d/e/${m[1]}/pub`);
   // /document/d/<ID>  (yêu cầu đã Publish; nếu chưa → 404)
   m = raw.match(/docs\.google\.com\/document\/d\/([^/]+)/i);
-  if (m) return addEmbeddedParam(`https://docs.google.com/document/d/${m[1]}/pub`);
+  if (m)
+    return addEmbeddedParam(`https://docs.google.com/document/d/${m[1]}/pub`);
   return addEmbeddedParam(raw);
 }
 
@@ -43,7 +47,10 @@ export async function GET(req: NextRequest) {
       redirect: "follow",
     });
     if (!upstream.ok) {
-      return new Response(`Upstream ${upstream.status}`, { status: 502, headers: CORS });
+      return new Response(`Upstream ${upstream.status}`, {
+        status: 502,
+        headers: CORS,
+      });
     }
 
     let html = await upstream.text();
@@ -65,7 +72,7 @@ export async function GET(req: NextRequest) {
         * { box-sizing: border-box; }
 
         /* Bỏ padding/margin của .c12 (class auto-gen của Docs) */
-        .c12 { padding: 0 !important; margin: 0 !important; }
+        .c12 {  max-width: 100% !important;}
 
         /* Thường vùng nội dung có class này khi publish -> xoá khoảng trống nếu có */
         .doc-content { padding: 0 !important; margin: 0 !important; }
@@ -77,9 +84,15 @@ export async function GET(req: NextRequest) {
 
     // chèn vào <head>
     if (/<head[^>]*>/i.test(html)) {
-      html = html.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}\n${injectedCss}\n`);
+      html = html.replace(
+        /<head[^>]*>/i,
+        (m) => `${m}\n${baseTag}\n${injectedCss}\n`
+      );
     } else {
-      html = html.replace(/<html[^>]*>/i, (m) => `${m}<head>${baseTag}${injectedCss}</head>`);
+      html = html.replace(
+        /<html[^>]*>/i,
+        (m) => `${m}<head>${baseTag}${injectedCss}</head>`
+      );
     }
 
     return new Response(html, {
