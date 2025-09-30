@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
 
     // >>> CSS bạn cần: ẩn banner publish + bỏ padding .c12 (+ reset nhẹ)
     const injectedCss = `
-  <style>
+<style>
   /* Ẩn banner, header, footer, vùng publish thừa */
   #publish-banner, .publish-banner, .docos-punch-viewer-banner,
   .docs-ml-header, header[role="banner"], .header, .footer {
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
 
   /* Reset chung viền/mép, box-sizing */
   html, body { margin: 0 !important; padding: 0 !important; }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box !important; }
 
   /* Responsive cho khối nội dung Docs (thường là .c12 hoặc doc-content) */
   .c12, .doc-content {
@@ -87,12 +87,12 @@ export async function GET(req: NextRequest) {
     word-break: break-word !important;
   }
 
-  /* Responsive cho mọi ảnh/video: chiều ngang tối đa */
+  /* Responsive cho mọi ảnh/video: chiều ngang tối đa, không tràn */
   img, video {
-    width: 100% !important;
-    max-width: 100vw !important;
-    height: auto !important;
     display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
     margin: 8px auto !important;
     object-fit: contain !important;
   }
@@ -147,6 +147,8 @@ export async function GET(req: NextRequest) {
       padding-right: 0 !important;
       margin-left: 0 !important;
       margin-right: 0 !important;
+      max-width: 100vw !important;
+      overflow-x: hidden !important;
     }
     /* Xóa thụt lề ngang mọi phần tử con */
     * {
@@ -169,6 +171,7 @@ export async function GET(req: NextRequest) {
     }
   }
 </style>
+
 
 
     `;
