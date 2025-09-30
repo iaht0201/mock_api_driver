@@ -1,66 +1,72 @@
-// app/api/pdf-url/route.ts
+import type { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import type { NextRequest } from "next/server";
+function normalizeToEmbed(raw = ""): string {
+  if (!raw) return "";
 
-function normalizeToPdf(url = ""): string {
-  if (!url) return "";
-  if (/\.pdf(\?|$)/i.test(url)) return url;
+  let m = raw.match(/docs\.google\.com\/document\/d\/([^/]+)/);
+  if (m) {
+    return `https://docs.google.com/document/d/${m[1]}/pub?embedded=true`;
+  }
 
-  const doc = url.match(/docs\.google\.com\/document\/d\/([^/]+)/);
-  if (doc)
-    return `https://docs.google.com/document/d/${doc[1]}/export?format=pdf`;
+  m = raw.match(/docs\.google\.com\/presentation\/d\/([^/]+)/);
+  if (m) {
+    return `https://docs.google.com/presentation/d/${m[1]}/embed?start=false&loop=false&delayms=3000`;
+  }
 
-  const slides = url.match(/docs\.google\.com\/presentation\/d\/([^/]+)/);
-  if (slides)
-    return `https://docs.google.com/presentation/d/${slides[1]}/export/pdf`;
+  m = raw.match(/docs\.google\.com\/spreadsheets\/d\/([^/]+)/);
+  if (m) {
+    return `https://docs.google.com/spreadsheets/d/${m[1]}/htmlview`;
+  }
 
-  const sheets = url.match(/docs\.google\.com\/spreadsheets\/d\/([^/]+)/);
-  if (sheets)
-    return `https://docs.google.com/spreadsheets/d/${sheets[1]}/export?format=pdf`;
+  m = raw.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
+  const q = raw.match(/[?&]id=([^&]+)/);
+  if (q) return `https://drive.google.com/file/d/${q[1]}/preview`;
 
-  const byPath = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-  const byQuery = url.match(/[?&]id=([^&]+)/);
-  const id = byPath?.[1] || byQuery?.[1];
-  if (id) return `https://drive.google.com/uc?export=download&id=${id}`;
+  if (/\.(docx|xlsx|pptx)(\?|$)/i.test(raw)) {
+    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
+      raw
+    )}`;
+  }
 
-  return url;
-}
+  // Nếu là PDF, dùng Google Viewer để tăng tương thích mobile (vẫn KHÔNG convert)
+  if (/\.pdf(\?|$)/i.test(raw)) {
+    return `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(
+      raw
+    )}`;
+  }
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Content-Type": "application/json; charset=utf-8",
-};
-
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: CORS });
+  return raw;
 }
 
 export async function GET(req: NextRequest) {
   const raw = req.nextUrl.searchParams.get("url") || "";
-  if (!raw) {
-    return new Response(JSON.stringify({ error: "Missing url" }), {
-      status: 400,
-      headers: CORS,
-    });
-  }
+  const mode = (req.nextUrl.searchParams.get("mode") || "").toLowerCase();
+  if (!raw) return new Response("Missing url", { status: 400 });
 
-  const exportUrl = normalizeToPdf(raw);
-  const proxiedUrl = exportUrl
-    ? `${req.nextUrl.origin}/api/pdf?url=${encodeURIComponent(exportUrl)}`
-    : "";
+  const embedUrl = normalizeToEmbed(raw);
 
-  const viewerUrl = proxiedUrl
-    ? `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(
-        proxiedUrl
-      )}`
-    : "";
+  const viewerUrl = `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(
+    raw
+  )}`;
 
-  return new Response(JSON.stringify({ exportUrl, proxiedUrl, viewerUrl }), {
-    status: 200,
-    headers: CORS,
-  });
+  const ua = req.headers.get("user-agent") || "";
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+  const isInApp =
+    /(FBAN|FBAV|Instagram|Messenger|Line|Zalo|TikTok|Twitter|Telegram)/i.test(
+      ua
+    ) ||
+    (!ua.includes("Safari") && /iPhone|iPad|iPod|Android/i.test(ua));
+  const target =
+    mode === "embed"
+      ? embedUrl
+      : mode === "viewer"
+      ? viewerUrl
+      : isMobile || isInApp
+      ? viewerUrl
+      : embedUrl;
+
+  return Response.redirect(target, 302);
 }
